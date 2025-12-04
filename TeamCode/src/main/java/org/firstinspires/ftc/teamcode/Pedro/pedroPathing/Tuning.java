@@ -23,6 +23,7 @@ import com.pedropathing.telemetry.SelectableOpMode;
 import com.pedropathing.util.*;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import org.firstinspires.ftc.teamcode.Kalman.KalmanFilterPose;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,6 +71,7 @@ public class Tuning extends SelectableOpMode {
             s.folder("Tests", p -> {
                 p.add("Line", Line::new);
                 p.add("Triangle", Triangle::new);
+                p.add("TriangleKalman", TriangleKalman::new);
                 p.add("Circle", Circle::new);
             });
         });
@@ -1118,6 +1120,91 @@ class Triangle extends OpMode {
                 .build();
 
         follower.followPath(triangle);
+    }
+}
+/**
+ * Triangle path test with integrated Kalman filter.
+ *
+ * This OpMode is added to the Tuning menu under "Tests."
+ * It runs the same triangle path as the original Triangle OpMode,
+ * but every loop() cycle it updates the Kalman filter using follower pose.
+ */
+class TriangleKalman extends OpMode {
+
+    // === your existing triangle poses ===
+    private final Pose startPose = new Pose(0, 0, Math.toRadians(0));
+    private final Pose interPose = new Pose(24, -24, Math.toRadians(90));
+    private final Pose endPose   = new Pose(24, 24, Math.toRadians(45));
+
+    private PathChain triangle;
+
+    // === your Kalman filter instance ===
+    private KalmanFilterPose kf;
+
+    @Override
+    public void init() {}
+
+    @Override
+    public void init_loop() {
+        telemetryM.debug("Triangle path with Kalman pose filtering.");
+        telemetryM.debug("Make sure there is space left, right, and forward.");
+        telemetryM.update(telemetry);
+
+        follower.update();
+        drawOnlyCurrent();
+    }
+
+    @Override
+    public void start() {
+        // initialize Kalman filter using current pose estimate
+        kf = new KalmanFilterPose(
+                follower.getPose().getX(),
+                follower.getPose().getY(),
+                follower.getPose().getHeading()
+        );
+
+        follower.setStartingPose(startPose);
+
+        // === build triangle path (unchanged) ===
+        triangle = follower.pathBuilder()
+                .addPath(new BezierLine(startPose, interPose))
+                .setLinearHeadingInterpolation(startPose.getHeading(), interPose.getHeading())
+                .addPath(new BezierLine(interPose, endPose))
+                .setLinearHeadingInterpolation(interPose.getHeading(), endPose.getHeading())
+                .addPath(new BezierLine(endPose, startPose))
+                .setLinearHeadingInterpolation(endPose.getHeading(), startPose.getHeading())
+                .build();
+
+        follower.followPath(triangle);
+    }
+
+    @Override
+    public void loop() {
+        follower.update();
+
+        // Get raw follower pose
+        Pose rawPose = follower.getPose();
+
+        // Update Kalman filter
+        kf.update(rawPose.getX(), rawPose.getY(), rawPose.getHeading());
+
+        // (OPTIONAL) set follower pose to filtered value:
+        // follower.setPose(new Pose(kalman.getX(), kalman.getY(), kalman.getHeading()));
+
+        // Draw robot and path
+        draw();
+
+        // Loop triangle forever
+        if (follower.atParametricEnd()) {
+            follower.followPath(triangle, true);
+        }
+
+        // Show filtered + raw pose
+        telemetryM.debug("RAW  Pose: " + rawPose);
+        telemetryM.debug("FILTERED: x=" + kf.getX() +
+                " y=" + kf.getY() +
+                " h=" + kf.getHeading());
+        telemetryM.update(telemetry);
     }
 }
 
