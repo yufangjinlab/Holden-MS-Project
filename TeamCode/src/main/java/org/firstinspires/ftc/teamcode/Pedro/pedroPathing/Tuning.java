@@ -1189,7 +1189,7 @@ class TriangleKalman extends OpMode {
         kf.update(rawPose.getX(), rawPose.getY(), rawPose.getHeading());
 
         // (OPTIONAL) set follower pose to filtered value:
-        // follower.setPose(new Pose(kalman.getX(), kalman.getY(), kalman.getHeading()));
+        follower.setPose(new Pose(kf.getX(), kf.getY(), kf.getHeading()));
 
         // Draw robot and path
         draw();
