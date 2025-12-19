@@ -4,6 +4,9 @@ public class KalmanFilter {
     // State vector: [x, y, heading]
     private double[] x = new double[3];
     private double[][] P = new double[3][3];
+    private double[][] R = new double [3][3];
+    private double[][] Q = new double [3][3];
+    private double[][] F = new double[3][3];
 
     // Process noise & measurement noise
     private final double q;
@@ -17,14 +20,25 @@ public class KalmanFilter {
         P[0][0] = 1;
         P[1][1] = 1;
         P[2][2] = 1;
+
+        // Measuremnt covariance matrix
+        R[0][0] = Math.pow(0.003,2); // M
+        R[1][1] = Math.pow(0.003,2);
+        R[2][2] = Math.pow(0.005,2); //rad
+
+        Q[0][0] = Math.pow(1,2); // M
+        Q[1][1] = Math.pow(1,2);
+        Q[2][2] = Math.pow(1,2); //rad
     }
 
     /** Prediction step using odometry deltas */
     public void predict(double dx, double dy, double dHeading) {
         // Predict state
-        x[0] += dx;
-        x[1] += dy;
-        x[2] += dHeading;
+        x[0] += dx*Math.cos(x[3])-dy*Math.sin(x[3]);
+        x[1] += dx*Math.sin(x[3])+dy*Math.cos(x[3]);
+        x[2] += -dHeading;
+
+
 
         // Increase uncertainty
         for (int i = 0; i < 3; i++) {
