@@ -1,3 +1,6 @@
+dependencies {
+    //implementation files('..\\libs\\Jama-1.0.3.jar')
+}
 import java.text.SimpleDateFormat
 
 //

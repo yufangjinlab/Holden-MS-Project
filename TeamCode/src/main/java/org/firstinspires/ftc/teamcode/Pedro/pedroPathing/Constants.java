@@ -19,12 +19,19 @@ public class Constants {
     public static FollowerConstants followerConstants = new FollowerConstants().mass(10.8)
             .forwardZeroPowerAcceleration(-32.5)
             .lateralZeroPowerAcceleration(-60)
-            .headingPIDFCoefficients(new PIDFCoefficients(1, 0, 0.01, 0.01))
+            .headingPIDFCoefficients(new PIDFCoefficients(0.9, 0, 0.01, 0.01))
             .drivePIDFCoefficients(new FilteredPIDFCoefficients(0.015,0.0,0.0001,0.6,0.04))
             .translationalPIDFCoefficients(new PIDFCoefficients(0.1, 0, 0.01, 0.01));
     //mass must be in kilograms
 
-    public static PathConstraints pathConstraints = new PathConstraints(0.99, 100, 1, 1);
+    public static PathConstraints pathConstraints = new PathConstraints(0.99,
+            0.5,
+            0.5,
+            0.007,
+            100,
+            1,
+            10,
+            1);
 
 
     public static MecanumConstants driveConstants = new MecanumConstants()

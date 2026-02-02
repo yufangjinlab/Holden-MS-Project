@@ -4,28 +4,45 @@ import com.pedropathing.geometry.Pose;
 
 public class KalmanTest {
 
-    private Pose lastPose = new Pose(0, 0, 0);
+    private Pose lastPose = null;
 
-    private final KalmanFilter filter = new KalmanFilter(
-            0.05,
-            0.5
-    );
+    private final KalmanFilter filter = new KalmanFilter();
 
     public Pose update(Pose measuredPose) {
 
-        double dx = measuredPose.getX() - lastPose.getX();
-        double dy = measuredPose.getY() - lastPose.getY();
+        // First call: initialize filter
+        if (lastPose == null) {
+            lastPose = measuredPose;
+            filter.setState(
+                    measuredPose.getX(),
+                    measuredPose.getY(),
+                    measuredPose.getHeading()
+            );
+            return measuredPose;
+        }
+
+        // ----- Compute FIELD frame delta -----
+        double dxField = measuredPose.getX() - lastPose.getX();
+        double dyField = measuredPose.getY() - lastPose.getY();
         double dHeading = measuredPose.getHeading() - lastPose.getHeading();
 
-        filter.predict(dx, dy, dHeading);
+        // ----- Convert to ROBOT frame delta (CRITICAL) -----
+        double h = lastPose.getHeading();
 
-        lastPose = measuredPose;
+        double dxRobot =  dxField * Math.cos(h) + dyField * Math.sin(h);
+        double dyRobot = -dxField * Math.sin(h) + dyField * Math.cos(h);
 
+        // ----- EKF Predict with robot motion -----
+        filter.predict(dxRobot, dyRobot, dHeading);
+
+        // ----- EKF Update with field measurement -----
         filter.update(
                 measuredPose.getX(),
                 measuredPose.getY(),
                 measuredPose.getHeading()
         );
+
+        lastPose = measuredPose;
 
         return new Pose(
                 filter.getX(),
