@@ -5,7 +5,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 
-@TeleOp(name = "JeepDrive_NoEncoders", group = "Jeep")
+//@TeleOp(name = "JeepDrive_NoEncoders", group = "Jeep")
 public class JeepDrive_NoEncoders extends LinearOpMode {
 
     private DcMotor backLeft;
