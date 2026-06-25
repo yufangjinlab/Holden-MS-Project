@@ -5,6 +5,8 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.util.ElapsedTime;
+import com.qualcomm.robotcore.util.Range;
 
 @TeleOp(name = "JeepDrive_EncoderScaled", group = "Jeep")
 public class JeepDrive_EncoderScaled extends LinearOpMode {
@@ -16,65 +18,103 @@ public class JeepDrive_EncoderScaled extends LinearOpMode {
     // ======== DRIVETRAIN CONSTANTS ========
     private static final double TICKS_PER_REV = 2000;
 
-    // 7 inch radius wheel
-    private static final double WHEEL_RADIUS_INCHES = 1.889;
-    private static final double WHEEL_CIRCUMFERENCE =
-            2 * Math.PI * WHEEL_RADIUS_INCHES;
+    // GEAR PROTECTION: Higher values = faster/snappier, Lower values = smoother/safer
+    // 1.2 means it takes ~0.8 seconds to go from 0 to full power (1.0 / 1.2 = 0.83)
+    private static final double MAX_ACCEL = 1.2;
 
-    // ======== TUNE THIS VALUE ========
+    // 48mm diameter encoder wheel (approx 1.889 inches)
+    private static final double WHEEL_DIAMETER_INCHES = 1.889;
+    private static final double WHEEL_CIRCUMFERENCE = Math.PI * WHEEL_DIAMETER_INCHES;
+
+    // ======== CALIBRATION & STATE ========
     private static double ENCODER_SCALE = 1.0;
+    private double currentDrivePower = 0.0;
+    private double currentSteerPower = 0.0;
+    
+    private ElapsedTime timer = new ElapsedTime();
 
     @Override
     public void runOpMode() {
 
+        // Initialize hardware
         backLeft = hardwareMap.get(DcMotorEx.class, "backLeft");
         backRight = hardwareMap.get(DcMotorEx.class, "backRight");
         frontTurn = hardwareMap.get(DcMotor.class, "frontTurn");
 
+        // Set directions - assuming mirrored rear motors
         backLeft.setDirection(DcMotorSimple.Direction.FORWARD);
         backRight.setDirection(DcMotorSimple.Direction.REVERSE);
         frontTurn.setDirection(DcMotorSimple.Direction.REVERSE);
 
-        backLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        backRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        // GEAR PROTECTION: Use FLOAT instead of BRAKE
+        // This prevents the "mechanical shock" when power reaches zero.
+        backLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        backRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        
+        // Steering usually needs BRAKE to stay in place, but we will ramp it too.
         frontTurn.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
+        // Reset encoders
         backLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         backRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
 
-        backLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        backRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        backLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        backRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+
+        telemetry.addData("Status", "Initialized - GEAR PROTECTION ENABLED");
+        telemetry.update();
 
         waitForStart();
+        timer.reset();
 
         while (opModeIsActive()) {
+            double deltaTime = timer.seconds();
+            timer.reset();
 
-            // ===== DRIVE =====
-            double drive = gamepad1.left_stick_y;
-            drive = Math.pow(drive, 3);
+            // ===== DRIVE WITH TIME-BASED RAMPING =====
+            double targetDrive = -gamepad1.left_stick_y;
+            double scaledTargetDrive = Math.pow(targetDrive, 3);
 
-            backLeft.setPower(drive);
-            backRight.setPower(drive);
+            // Calculate how much we can change power based on the time since last loop
+            double maxChange = MAX_ACCEL * deltaTime;
 
-            // ===== STEERING =====
-            double steer = gamepad1.right_stick_x;
-            frontTurn.setPower(steer);
+            // Constrain the change to the limit
+            double driveError = scaledTargetDrive - currentDrivePower;
+            double driveStep = Range.clip(driveError, -maxChange, maxChange);
+            currentDrivePower += driveStep;
+
+            backLeft.setPower(currentDrivePower);
+            backRight.setPower(currentDrivePower);
+
+            // ===== STEERING WITH TIME-BASED RAMPING =====
+            double targetSteer = gamepad1.right_stick_x;
+            
+            double steerError = targetSteer - currentSteerPower;
+            double steerStep = Range.clip(steerError, -maxChange, maxChange);
+            currentSteerPower += steerStep;
+            
+            frontTurn.setPower(currentSteerPower);
 
             // ===== ENCODER MATH =====
-            int leftTicks = backLeft.getCurrentPosition();
-            int rightTicks = backRight.getCurrentPosition();
+            // FIX: If distance was off by half, it's because we averaged a motor with no encoder.
+            // We'll use the maximum of the two positions to catch whichever port has the dead-wheel.
+            int leftTicks = Math.abs(backLeft.getCurrentPosition());
+            int rightTicks = Math.abs(backRight.getCurrentPosition());
+            int maxTicks = Math.max(leftTicks, rightTicks);
 
-            double avgTicks = (leftTicks + rightTicks) / 2.0;
+            double rawDistanceInches = (maxTicks / TICKS_PER_REV) * WHEEL_CIRCUMFERENCE;
+            double correctedDistanceInches = rawDistanceInches * ENCODER_SCALE;
 
-            double rawDistanceInches =
-                    (avgTicks / TICKS_PER_REV) * WHEEL_CIRCUMFERENCE;
+            // Live tuning for calibration (hold bumpers to change faster)
+            if (gamepad1.dpad_up) ENCODER_SCALE += 0.0001;
+            if (gamepad1.dpad_down) ENCODER_SCALE -= 0.0001;
 
-            double correctedDistanceInches =
-                    rawDistanceInches * ENCODER_SCALE;
-
-            telemetry.addData("Raw Distance (in)", rawDistanceInches);
-            telemetry.addData("Corrected Distance (in)", correctedDistanceInches);
-            telemetry.addData("Encoder Scale", ENCODER_SCALE);
+            telemetry.addData("Drive Power", "%.2f", currentDrivePower);
+            telemetry.addData("Steer Power", "%.2f", currentSteerPower);
+            telemetry.addData("Raw Ticks (L/R)", "%d / %d", leftTicks, rightTicks);
+            telemetry.addData("Raw Distance (in)", "%.2f", rawDistanceInches);
+            telemetry.addData("Scaled Distance (in)", "%.2f", correctedDistanceInches);
+            telemetry.addData("Encoder Scale", "%.5f", ENCODER_SCALE);
             telemetry.update();
         }
     }
